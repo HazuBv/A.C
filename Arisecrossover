@@ -558,16 +558,6 @@ Tab:CreateToggle({
   end
 }, "AutoSellShadowRank")
 
-Tab:CreateDropdown({
-  Name = "Select Shadow Rank",
-  Description = "Select the rank you want to lock",
-  Options = RankValues,
-  CurrentOption = {},
-  MultipleOptions = true,
-  SpecialType = nil,
-  Callback = function()end
-}, "SelectShadowRank")
-
 Tab:CreateSection("Dungeon")
 
 Tab:CreateButton({
