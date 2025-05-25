@@ -568,59 +568,6 @@ Tab:CreateDropdown({
   Callback = function()end
 }, "SelectShadowRank")
 
-Tab:CreateToggle({
-  Name = "Auto Lock Shadow Rank",
-  Callback = function()
-    while Flags.AutoSellShadowRank.CurrentValue and task.wait(.1) do
-      local Pets = Player.leaderstats.Inventory:FindFirstChild("Pets")
-      local RankNumbers = {}
-
-      for _, RankString in ipairs(Flags.SelectShadowRank.CurrentOption) do
-        local RankLetter = string.sub(RankString, 6)
-        
-        for Num, Letter in ipairs(RankMaps) do
-          if Letter == RankLetter then
-            table.insert(RankNumbers, Num)
-            break
-          end
-        end
-      end
-
-      if #RankNumbers > 0 then
-        for _, Pet in ipairs(Pets:GetChildren()) do
-          local RankValue = Pet:GetAttribute("Rank")
-          
-          if typeof(RankValue) == "number" then
-            for _, Rank in ipairs(RankNumbers) do
-              if RankValue == Rank then
-                local Args = {
-                  [1] = {
-                    [1] = {
-                      ["Event"] = "LockPet",
-                      ["Pets"] = {Pet.Name}
-                    },
-                    [2] = "\5"
-                  }
-                }
-                Remotes:FireServer(unpack(Args))
-                task.wait(.3)
-                break
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-}, "AutoLockShadowRank")
-
-local Tab: Tab = Window:CreateTab({
-  Name = "Dungeon",
-  Icon = "swords",
-  ImageSource = "Lucide",
-  ShowTitle = false
-})
-
 Tab:CreateSection("Dungeon")
 
 Tab:CreateButton({
