@@ -259,41 +259,118 @@ local function GetMobTypeFromId(Id)
 	return #Id > 3 and Id:match("B%d$") and "Big" or "Normal"
 end
 
--- TweenService method to teleport smoothly (bypass Byfron detection)
-local TweenService = game:GetService("TweenService")
-local TweenInfoConfig = TweenInfo.new(0.35, Enum.EasingStyle.Linear)
+local function GetNearestMob(Options)
+  Options = Options or {}
+  local MaxDistance = Options.MaxDistance
+  local UseFilter = Options.UseFilter
 
-local function TweenToPosition(Character, TargetPos)
-    local HRP = Character:FindFirstChild("HumanoidRootPart")
-    if not HRP then return end
+  local NearestMob, ShortestDistance = nil, math.huge
+  local PlayerPos = Humanoid.Position
 
-    local Tween = TweenService:Create(HRP, TweenInfoConfig, {
-        CFrame = CFrame.new(TargetPos)
-    })
+  local ServerFolder = Mobs:FindFirstChild("Server")
+  local ClientFolder = Mobs:FindFirstChild("Client")
 
-    Tween:Play()
-    Tween.Completed:Wait()
+  local SelectedMobs = Flags.SelectMob.CurrentOption
+  local SelectedTypes = Flags.SelectType.CurrentOption
+
+  for _, SubFolder in pairs(ServerFolder:GetChildren()) do
+    if not SubFolder:IsA("Folder") and not SubFolder:GetAttribute("Dead") then
+      if UseFilter then
+        local Model = SubFolder:GetAttribute("Model")
+        local Id = SubFolder:GetAttribute("Id")
+
+        local MobType = GetMobTypeFromId(Id)
+        local MobName = GetMobNameFromModel(Model)
+
+        if not table.find(SelectedMobs, MobName) or not table.find(SelectedTypes, MobType) then
+          continue
+        end
+      end
+
+      local MobPos = SubFolder:GetPivot().Position
+      local Distance = (PlayerPos - MobPos).Magnitude
+
+      if MaxDistance and Distance > MaxDistance then
+        continue
+      end
+
+      if Distance < ShortestDistance then
+        ShortestDistance = Distance
+        NearestMob = SubFolder
+      end
+    elseif SubFolder:IsA("Folder") and #SubFolder:GetChildren() > 0 then
+      for _, Mob in pairs(SubFolder:GetChildren()) do
+        if Mob:IsA("Instance") and not Mob:GetAttribute("Dead") then
+          if UseFilter then
+            local Model = Mob:GetAttribute("Model")
+            local Id = Mob:GetAttribute("Id")
+
+            local MobType = GetMobTypeFromId(Id)
+            local MobName = GetMobNameFromModel(Model)
+
+            if not table.find(SelectedMobs, MobName) or not table.find(SelectedTypes, MobType) then
+              continue
+            end
+          end
+
+          local MobPos = Mob:GetPivot().Position
+          local Distance = (PlayerPos - MobPos).Magnitude
+
+          if MaxDistance and Distance > MaxDistance then
+            continue
+          end
+
+          if Distance < ShortestDistance then
+            ShortestDistance = Distance
+            NearestMob = Mob
+          end
+        end
+      end
+    end
+  end
+
+  return NearestMob
 end
 
--- Replace Character:PivotTo(CFrame.new(TargetPos) * CFrame.new(0, 0, 6)) with tween version
+local function GetAnyMob()
+	local ServerFolder = Mobs:FindFirstChild("Server")
+
+	for _, SubFolder in ipairs(ServerFolder:GetChildren()) do
+		if not SubFolder:IsA("Folder") and not SubFolder:GetAttribute("Dead") then
+      return SubFolder
+    end
+
+		if SubFolder:IsA("Folder") and #SubFolder:GetChildren() > 0 then
+			for _, Mob in ipairs(SubFolder:GetChildren()) do
+				if Mob:IsA("Instance") and not Mob:GetAttribute("Dead") then
+					return Mob
+				end
+			end
+		end
+	end
+
+	return nil
+end
 
 Tab:CreateToggle({
   Name = "Auto Farm Selected Mobs",
   Callback = function()
     while Flags.AutoFarmSelectedMobs.CurrentValue and task.wait(.1) do
       local Target
-      repeat
-        Target = GetNearestMob({ UseFilter = true })
-        task.wait(.1)
-      until Target and Target:IsA("Instance") and not Target:GetAttribute("Dead")
+			repeat
+				Target = GetNearestMob({
+          UseFilter = true,
+        })
+				task.wait(.1)
+			until Target and Target:IsA("Instance") and not Target:GetAttribute("Dead")
 
       if Target then
-        local TargetPos = Target:GetPivot().Position + Vector3.new(0, 0, 6)
+        local TargetPos = Target:GetPivot().Position
         local PlayerPos = Character:GetPivot().Position
         local Distance = (PlayerPos - TargetPos).Magnitude
 
         if Distance > 10 then
-          TweenToPosition(Character, TargetPos)
+          Character:PivotTo(CFrame.new(TargetPos) * CFrame.new(0, 0, 6))
           task.wait(tonumber(Flags.DelayFarm.CurrentValue))
           ShadowAttack(Target)
         end
