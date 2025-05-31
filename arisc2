@@ -106,7 +106,7 @@ Player.OnTeleport:Connect(function()
             end)
         ]])
     end
-end)
+})
 
 local AllMobWorlds = {
     ["SoloWorld"] = {"Soondoo", "Gonshee", "Daek", "Longin", "Anders", "Largalgan"},
@@ -206,7 +206,7 @@ task.spawn(function()
             if CharacterScripts then
                 for _, Child in ipairs(CharacterScripts:GetChildren()) do
                     Child:Destroy()
-                end
+                (end)
             end
         end
     end
@@ -318,7 +318,7 @@ local function ShadowAttack(Target)
         }
     }
     Remotes:FireServer(unpack(Args))
-</div>
+end
 
 
 local function IsInDungeon()
@@ -923,7 +923,7 @@ Tab:CreateToggle({
                             CreateAndStartDungeon(Player.UserId)
                         end
                     end
-                </div>
+                end
         
                 if dungeonMode == "Teleport" then
                     -- Ensure Dungeon exists before iterating
@@ -1093,7 +1093,7 @@ Tab:CreateToggle({
 }, "AutoCastle")
 
 Tab:CreateInput({
-    Name = "Floor to Leave 🚪",
+    Name = "Floor to Leave �",
     Description = "Automatically leave when reaching +1 this floor. (1-100)",
     PlaceholderText = "25",
     CurrentValue = "25", -- Default value
