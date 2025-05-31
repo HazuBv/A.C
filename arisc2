@@ -1,18 +1,14 @@
 --!strict
--- Script pour le Monde 2 d'Arise Crossover.
--- Ce script contient des fonctionnalités d'automatisation pour le farm, le donjon, le château et la téléportation,
--- spécifiquement adaptées aux emplacements du Monde 2.
-
 local getgenv: () -> ({[string]: any}) = getfenv().getgenv
 
 getgenv().ScriptVersion = "v3"
 
--- Assurez-vous que Flags et Window sont initialisés même si Cheese Core prend du temps ou échoue partiellement
--- Cela fournit une structure de base pour éviter les erreurs si getgenv().Flags n'est pas immédiatement défini.
+-- Ensure Flags and Window are initialized even if Cheese Core takes time or fails partially
+-- This provides a basic structure to prevent errors if getgenv().Flags isn't immediately set.
 getgenv().Flags = getgenv().Flags or {}
 getgenv().Window = getgenv().Window or {
     CreateTab = function(self, config)
-        -- Mock de base pour CreateTab si la bibliothèque d'interface utilisateur réelle n'est pas encore chargée
+        -- Basic mock for CreateTab if the actual UI library isn't loaded yet
         return {
             CreateSection = function(self, name) end,
             CreateDivider = function(self) end,
@@ -37,11 +33,11 @@ getgenv().Window = getgenv().Window or {
 
 do
     local Core = loadstring(game:HttpGet("https://github.com/aw4e/Cheese/raw/dev/Core.lua"))
-    if not Core then return warn("Échec du chargement du Cheese Core") end
+    if not Core then return warn("Failed to load the Cheese Core") end
     Core()
 end
 
--- Types (pour le typage strict, pas pour la logique d'exécution directe)
+-- Types (These are for strict typing, not direct execution logic)
 type Element = {
     CurrentValue: any,
     CurrentOption: {string},
@@ -53,22 +49,22 @@ type Flags = {[string]: Element}
 type Tab = {
     CreateSection: (self: Tab, Name: string) -> Element,
     CreateDivider: (self: Tab) -> Element,
-    CreateToggle: (self: Tab, any, string?) -> Element,
-    CreateSlider: (self: Tab, any, string?) -> Element,
-    CreateDropdown: (self: Tab, any, string?) -> Element,
+    CreateToggle: (self: Tab, any, string?) -> Element, -- Added string? for flagName
+    CreateSlider: (self: Tab, any, string?) -> Element, -- Added string? for flagName
+    CreateDropdown: (self: Tab, any, string?) -> Element, -- Added string? for flagName
     CreateButton: (self: Tab, any) -> Element,
     CreateLabel: (self: Tab, any, any?) -> Element,
     CreateParagraph: (self: Tab, any) -> Element,
-    CreateInput: (self: Tab, any, string?) -> Element,
+    CreateInput: (self: Tab, any, string?) -> Element, -- Added for CreateInput
 }
 
 
--- Variables (Assurez-vous qu'elles sont correctement initialisées par le core ou définies ici)
-local Notify: (Title: string, Content: string, Image: string?) -> () = getgenv().Notify or function(title, content, image) print("Notification: " .. title .. " - " .. content) end
-local CreateFeature: (Tab: Tab, FeatureName: string) -> () = getgenv().CreateFeature or function(tab, name) warn("CreateFeature non implémenté par le Core") end
-local HandleConnection: (Connection: RBXScriptConnection, Name: string) -> () = getgenv().HandleConnection or function(conn, name) conn:Disconnect() end -- Mock de base
+-- Variable (Ensure these are properly initialized by the core or defined here)
+local Notify: (Title: string, Content: string, Image: string?) -> () = getgenv().Notify or function(title, content, image) print("Notify: " .. title .. " - " .. content) end
+local CreateFeature: (Tab: Tab, FeatureName: string) -> () = getgenv().CreateFeature or function(tab, name) warn("CreateFeature not implemented by Core") end
+local HandleConnection: (Connection: RBXScriptConnection, Name: string) -> () = getgenv().HandleConnection or function(conn, name) conn:Disconnect() end -- Basic mock
 
-local queue_on_teleport: (Code: string) -> () = getfenv().queue_on_teleport or function(code) warn("queue_on_teleport non disponible dans cet environnement") end
+local queue_on_teleport: (Code: string) -> () = getfenv().queue_on_teleport or function(code) warn("queue_on_teleport not available in this environment") end
 
 local Player = game:GetService("Players").LocalPlayer
 local Character = Player.Character or Player.CharacterAdded:Wait()
@@ -77,9 +73,9 @@ local Humanoid = Character:WaitForChild("HumanoidRootPart")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
 
--- Assurez-vous que Remotes existe avant d'essayer d'y accéder
+-- Ensure Remotes exists before trying to access it
 local Remotes = ReplicatedStorage:WaitForChild("BridgeNet2", 10) and ReplicatedStorage.BridgeNet2:WaitForChild("dataRemoteEvent", 10)
-if not Remotes then warn("BridgeNet2 ou dataRemoteEvent non trouvés!") end
+if not Remotes then warn("BridgeNet2 or dataRemoteEvent not found!") end
 
 local Pets = workspace:WaitForChild("__Main", 10) and workspace.__Main:WaitForChild("__Pets", 10)
 local Mobs = workspace:WaitForChild("__Main", 10) and workspace.__Main:WaitForChild("__Enemies", 10)
@@ -88,8 +84,8 @@ local Spawns = workspace:WaitForChild("__Extra", 10) and workspace.__Extra:WaitF
 local Dungeon = workspace:WaitForChild("__Main", 10) and workspace.__Main:WaitForChild("__Dungeon", 10)
 
 -- GamePass
--- Ces attributs peuvent devoir être définis côté serveur, les modifications côté client des attributs
--- sur leaderstats ou settings peuvent ne pas se répliquer ou être efficaces.
+-- These might need to be set on the server side, client-side changes to attributes
+-- on leaderstats or settings might not replicate or be effective.
 Player.Settings:SetAttribute("AutoAttack", true)
 Player.leaderstats.Passes:SetAttribute("AutoAttack", true)
 Player.leaderstats.Passes:SetAttribute("AutoClicker", true)
@@ -112,37 +108,59 @@ Player.OnTeleport:Connect(function()
     end
 end)
 
--- Définitions spécifiques au Monde 2
 local AllMobWorlds = {
+    ["SoloWorld"] = {"Soondoo", "Gonshee", "Daek", "Longin", "Anders", "Largalgan"},
+    ["NarutoWorld"] = {"Snake Man", "Blossom", "Black Crow"},
+    ["OPWorld"] = {"Shark Man", "Eminel", "Light Admiral"},
+    ["BleachWorld"] = {"Luryu", "Fyakuya", "Genji"},
+    ["BCWorld"] = {"Sortudo", "Michille", "Wind"},
+    ["ChainsawWorld"] = {"Heaven", "Zere", "Ika"},
+    ["JojoWorld"] = {"Diablo", "Gosuke", "Golyne"},
     ["DBWorld"] = {"Turtle", "Green", "Sky"},
-    ["OPMWorld"] = {"Rider", "Cyborg", "Hurricane"},
-    ["HxHWorld"] = {"Gon", "Killua", "Hisoka"}, -- Ajouté HxHWorld
-    ["DanWorld"] = {"Dan", "Asta", "Yuno"} -- Ajouté DanWorld
+    ["OPMWorld"] = {"Rider", "Cyborg", "Hurricane"}
 }
 
--- Coordonnées des îles du Monde 2 (PLACEHOLDERS - À METTRE À JOUR PAR L'UTILISATEUR)
-local Islands = {
-    ["DBWorld"] = CFrame.new(3856.48486, 60.1204987, 3077.04736, 0.3869977, -1.41971441e-07, 0.922080696, -2.65326292e-07, 1, 2.65326122e-07, -0.922080696, -3.47332843e-07, 0.3869977), -- Exemple de CFrame de Dedu Island
-    ["OPMWorld"] = CFrame.new(4782.6416, 29.7264385, -2043.24084, -0.953545272, -1.8529015e-09, 0.301249772, -2.27541319e-11, 1, 6.07869133e-09, -0.301249772, 5.78945292e-09, -0.953545272), -- Exemple de CFrame de Winter Island
-    ["HxHWorld"] = CFrame.new(1000, 50, 1000), -- PLACEHOLDER: Mettez à jour avec les coordonnées réelles
-    ["DanWorld"] = CFrame.new(2000, 50, 2000) -- PLACEHOLDER: Mettez à jour avec les coordonnées réelles
-}
+local Islands = {}
+if Spawns then -- Ensure Spawns exists before iterating
+    for _, Island in pairs(Spawns:GetChildren()) do
+        Islands[Island.Name] = Island.CFrame
+    end
+end
 
-local IslandKeys = {"DBWorld", "OPMWorld", "HxHWorld", "DanWorld"}
-table.sort(IslandKeys) -- Trie les clés pour un affichage cohérent
+-- Liste des mondes spécifiques que l'utilisateur veut voir dans le dropdown
+local specificWorldButtons = {"HxHWorld", "DanWorld", "OPMWorld", "DBWorld", "Solo2World"}
+
+local IslandKeys = {}
+-- Remplir IslandKeys uniquement avec les mondes spécifiques si leurs CFrames sont disponibles
+for _, worldName in ipairs(specificWorldButtons) do
+    if Islands[worldName] then
+        table.insert(IslandKeys, worldName)
+    end
+end
+
 
 local CodeWorlds = {
+    SL = "SoloWorld",
+    NR = "NarutoWorld",
+    OP = "OPWorld",
+    BL = "BleachWorld",
+    BC = "BCWorld",
+    CH = "ChainsawWorld",
+    JB = "JojoWorld",
     DB = "DBWorld",
     OPM = "OPMWorld",
-    HXH = "HxHWorld", -- Ajouté HxHWorld code
-    DAN = "DanWorld", -- Ajouté DanWorld code
 }
 
 local VillageNames = {
+    ["Grass Village"] = "NarutoWorld",
+    ["Brum Island"] = "OPWorld",
+    ["Leveling City"] = "SoloWorld",
+    ["Faceheal Town"] = "BleachWorld",
+    ["Lucky Kingdom"] = "BCWorld",
+    ["Nipon City"] = "ChainsawWorld",
+    ["Mori Town"] = "JojoWorld",
     ["Dragon City"] = "DBWorld",
-    ["XZ City"] = "OPMWorld",
-    ["Hunter City"] = "HxHWorld", -- Ajouté HxHWorld village name
-    ["Magic Kingdom"] = "DanWorld" -- Ajouté DanWorld village name
+    ["XZ City"] = "OPMWorld"
 }
 
 local VillageSpawns = {}
@@ -162,10 +180,14 @@ end
 local MobTypes = { "Normal", "Big" }
 
 local Runes = {
+    ["Rune Leveling City"] = "DgSoloRune",
+    ["Rune Grass Village"] = "DgNarutoRune",
+    ["Rune Brum Island"] = "DgOPRune",
     ["Rune Dragon City"] = "DgDBRune",
-    ["Rune XZ City"] = "DgOPMRune", -- Rune supposée pour OPMWorld
-    ["Rune Hunter City"] = "DgHxHRune", -- Rune supposée pour HxHWorld
-    ["Rune Magic Kingdom"] = "DgDanRune", -- Rune supposée pour DanWorld
+    ["Rune Fcaeheal"] = "DgBleachRune",
+    ["Rune Lucky Kingdom"] = "DgBCRune",
+    ["Rune Nipon City"] = "DgChainsawRune",
+    ["Rune Mori Town"] = "DgJojoRune",
     ["Rune Rank Up"] = "DgRankUpRune"
 }
 
@@ -175,8 +197,8 @@ for Key, _ in pairs(Runes) do
 end
 
 -- AntiCheat
--- Cette section tente de détruire les CharacterScripts. Soyez conscient que cela peut
--- causer des problèmes si le jeu dépend de ces scripts pour sa fonctionnalité principale.
+-- This section attempts to destroy CharacterScripts. Be aware that this can
+-- cause issues if the game relies on these scripts for core functionality.
 task.spawn(function()
     while true and task.wait(.1) do
         if Player and Character then
@@ -190,8 +212,9 @@ task.spawn(function()
     end
 end)
 
--- Caractéristiques
-local Flags: Flags = getgenv().Flags -- Réaffecte après que le Core l'ait potentiellement défini
+-- Features
+
+local Flags: Flags = getgenv().Flags -- Re-assign after Core might have set it
 local Window = getgenv().Window
 
 local Tab: Tab = Window:CreateTab({
@@ -204,8 +227,8 @@ local Tab: Tab = Window:CreateTab({
 Tab:CreateSection("Mobs")
 
 Tab:CreateDropdown({
-    Name = "Sélectionner le Monde",
-    Description = "Sélectionnez le monde que vous voulez farmer",
+    Name = "Select World's",
+    Description = "Select the world you want to farm",
     Options = IslandKeys,
     CurrentOption = {},
     MultipleOptions = false,
@@ -213,24 +236,24 @@ Tab:CreateDropdown({
     Callback = function(Value)
         local MobList = AllMobWorlds[Value]
         if MobList and #MobList > 0 then
-            -- Assurez-vous que Flags.SelectMob existe avant d'appeler Set
+            -- Ensure Flags.SelectMob exists before calling Set
             if Flags.SelectMob then
                 Flags.SelectMob:Set({
                     Options = MobList,
                     CurrentOption = {}
                 })
             else
-                warn("Flags.SelectMob non initialisé!")
+                warn("Flags.SelectMob not initialized!")
             end
         else
-            Notify("Sélection des Mobs 🗺️", "Aucun mob trouvé pour le monde sélectionné: " .. tostring(Value) .. " 🚫", "_error")
+            Notify("Mob Selection 🗺️", "No mobs found for selected world: " .. tostring(Value) .. " 🚫", "_error")
         end
     end
 }, "SelectWorld")
 
 Tab:CreateDropdown({
-    Name = "Sélectionner le Mob",
-    Description = "Sélectionnez le mob que vous voulez farmer",
+    Name = "Select Mob's",
+    Description = "Select the mob you want to farm",
     Options = {},
     CurrentOption = {},
     MultipleOptions = true,
@@ -239,8 +262,8 @@ Tab:CreateDropdown({
 }, "SelectMob")
 
 Tab:CreateDropdown({
-    Name = "Sélectionner le Type",
-    Description = "Sélectionnez le type de mob que vous voulez farmer",
+    Name = "Select Type",
+    Description = "Select the mob type you want to farm",
     Options = MobTypes,
     CurrentOption = {},
     MultipleOptions = true,
@@ -249,8 +272,8 @@ Tab:CreateDropdown({
 }, "SelectType")
 
 Tab:CreateSlider({
-    Name = "Délai de Farm",
-    Description = "Définissez le délai entre les actions de farm",
+    Name = "Delay Farm",
+    Description = "Set the delay between farm actions", -- Added description for clarity
     Range = {0.1, 5},
     Increment = 0.1,
     CurrentValue = 0.5,
@@ -262,14 +285,14 @@ local function InstantTeleport(targetCFrame)
     if Character then
         Character:PivotTo(targetCFrame)
     else
-        warn("Personnage non trouvé pour la téléportation instantanée!")
+        warn("Character not found for InstantTeleport!")
     end
 end
 
 -- Fonction pour la téléportation avec tween
 local function TweenToPosition(character, targetPosition)
     if not character or not character:FindFirstChild("HumanoidRootPart") then
-        warn("Personnage ou HumanoidRootPart invalide pour TweenToPosition!")
+        warn("Invalid character or HumanoidRootPart for TweenToPosition!")
         return
     end
     local TweenService = game:GetService("TweenService")
@@ -282,8 +305,8 @@ end
 
 -- Fonction pour l'attaque (inchangée)
 local function ShadowAttack(Target)
-    if not Remotes then warn("Remotes non disponibles pour ShadowAttack!") return end
-    if not Target or not Target.Name then warn("Cible invalide pour ShadowAttack!") return end
+    if not Remotes then warn("Remotes not available for ShadowAttack!") return end
+    if not Target or not Target.Name then warn("Invalid target for ShadowAttack!") return end
 
     local Args = {
         [1] = {
@@ -295,7 +318,7 @@ local function ShadowAttack(Target)
         }
     }
     Remotes:FireServer(unpack(Args))
-end
+</div>
 
 
 local function IsInDungeon()
@@ -315,8 +338,8 @@ local function HasAvailablePrompt(Mob)
 end
 
 local function GetMobNameFromModel(Model)
-    local Code, Id = Model:match("^(%a+)(%d+)$") -- Ajouté ^ et $ pour une correspondance exacte
-    -- Assurez-vous que CodeWorlds[Code] existe avant d'accéder à AllMobWorlds
+    local Code, Id = Model:match("^(%a+)(%d+)$") -- Added ^ and $ for exact match
+    -- Ensure CodeWorlds[Code] exists before accessing AllMobWorlds
     local WorldName = CodeWorlds[Code]
     local Mob = WorldName and AllMobWorlds[WorldName]
     return Mob and Id and Mob[tonumber(Id)] or nil
@@ -332,27 +355,27 @@ local function GetNearestMob(Options)
     local UseFilter = Options.UseFilter
 
     local NearestMob, ShortestDistance = nil, math.huge
-    local PlayerPos = Humanoid and Humanoid.Position -- Assurez-vous que Humanoid existe
+    local PlayerPos = Humanoid and Humanoid.Position -- Ensure Humanoid exists
 
-    if not PlayerPos then return nil end -- Quitte si la position du joueur n'est pas disponible
+    if not PlayerPos then return nil end -- Exit if player position is not available
 
     local ServerFolder = Mobs and Mobs:FindFirstChild("Server")
     local ClientFolder = Mobs and Mobs:FindFirstChild("Client")
 
-    if not ServerFolder then warn("Dossier Mobs/Server non trouvé!") return nil end
+    if not ServerFolder then warn("Mobs/Server folder not found!") return nil end
 
     local SelectedMobs = Flags.SelectMob and Flags.SelectMob.CurrentOption or {}
     local SelectedTypes = Flags.SelectType and Flags.SelectType.CurrentOption or {}
 
-    -- Itère à travers ServerFolder
+    -- Iterate through ServerFolder
     for _, SubFolder in pairs(ServerFolder:GetChildren()) do
         if not SubFolder:IsA("Folder") and not SubFolder:GetAttribute("Dead") then
             if UseFilter then
                 local Model = SubFolder:GetAttribute("Model")
                 local Id = SubFolder:GetAttribute("Id")
 
-                local MobType = GetMobTypeFromId(tostring(Id)) -- Assurez-vous que Id est une chaîne
-                local MobName = GetMobNameFromModel(tostring(Model)) -- Assurez-vous que Model est une chaîne
+                local MobType = GetMobTypeFromId(tostring(Id)) -- Ensure Id is a string
+                local MobName = GetMobNameFromModel(tostring(Model)) -- Ensure Model is a string
 
                 if not table.find(SelectedMobs, MobName) or not table.find(SelectedTypes, MobType) then
                     continue
@@ -377,8 +400,8 @@ local function GetNearestMob(Options)
                         local Model = Mob:GetAttribute("Model")
                         local Id = Mob:GetAttribute("Id")
 
-                        local MobType = GetMobTypeFromId(tostring(Id)) -- Assurez-vous que Id est une chaîne
-                        local MobName = GetMobNameFromModel(tostring(Model)) -- Assurez-vous que Model est une chaîne
+                        local MobType = GetMobTypeFromId(tostring(Id)) -- Ensure Id is a string
+                        local MobName = GetMobNameFromModel(tostring(Model)) -- Ensure Model is a string
 
                         if not table.find(SelectedMobs, MobName) or not table.find(SelectedTypes, MobType) then
                             continue
@@ -406,7 +429,7 @@ end
 
 local function GetAnyMob()
     local ServerFolder = Mobs and Mobs:FindFirstChild("Server")
-    if not ServerFolder then warn("Dossier Mobs/Server non trouvé pour GetAnyMob!") return nil end
+    if not ServerFolder then warn("Mobs/Server folder not found for GetAnyMob!") return nil end
 
     for _, SubFolder in ipairs(ServerFolder:GetChildren()) do
         if not SubFolder:IsA("Folder") and not SubFolder:GetAttribute("Dead") then
@@ -425,8 +448,8 @@ local function GetAnyMob()
 end
 
 Tab:CreateToggle({
-    Name = "Auto Farm Mobs Sélectionnés ⚔️",
-    Description = "Farme automatiquement les mobs en fonction de votre sélection",
+    Name = "Auto Farm Selected Mobs ⚔️",
+    Description = "Automatically farm mobs based on your selection", -- Added description
     Callback = function()
         while Flags.AutoFarmSelectedMobs.CurrentValue and task.wait(.1) do
             local Target
@@ -450,10 +473,10 @@ Tab:CreateToggle({
                     elseif farmTeleportMethod == "Bypass (tween)" then
                         TweenToPosition(Character, TargetPos + Vector3.new(0, 0, 6))
                     else
-                        -- Par défaut, téléportation instantanée si la méthode n'est pas sélectionnée ou invalide
+                        -- Default to instant if method not selected or invalid
                         InstantTeleport(CFrame.new(TargetPos) * CFrame.new(0, 0, 6))
                     end
-                    task.wait(tonumber(Flags.DelayFarm.CurrentValue or 0.5)) -- Délai par défaut si non défini
+                    task.wait(tonumber(Flags.DelayFarm.CurrentValue or 0.5)) -- Default delay if not set
                     ShadowAttack(Target)
                 end
             end
@@ -462,8 +485,8 @@ Tab:CreateToggle({
 }, "AutoFarmSelectedMobs")
 
 Tab:CreateToggle({
-    Name = "Auto Farm N'importe Quel Mob 🎯",
-    Description = "Farme automatiquement n'importe quel mob disponible",
+    Name = "Auto Farm Any Mobs 🎯",
+    Description = "Automatically farm any available mob", -- Added description
     Callback = function()
         while Flags.AutoFarmAnyMobs.CurrentValue and task.wait(.1) do
             local Target
@@ -485,10 +508,10 @@ Tab:CreateToggle({
                     elseif farmTeleportMethod == "Bypass (tween)" then
                         TweenToPosition(Character, TargetPos)
                     else
-                        -- Par défaut, téléportation instantanée si la méthode n'est pas sélectionnée ou invalide
+                        -- Default to instant if method not selected or invalid
                         InstantTeleport(CFrame.new(TargetPos))
                     end
-                    task.wait(tonumber(Flags.DelayFarm.CurrentValue or 0.5)) -- Délai par défaut si non défini
+                    task.wait(tonumber(Flags.DelayFarm.CurrentValue or 0.5)) -- Default delay if not set
                     ShadowAttack(Target)
                 end
             end
@@ -499,8 +522,8 @@ Tab:CreateToggle({
 Tab:CreateDivider()
 
 local function AttackMob(Mob)
-    if not Remotes then warn("Remotes non disponibles pour AttackMob!") return end
-    if not Mob or not Mob.Name then warn("Mob invalide pour AttackMob!") return end
+    if not Remotes then warn("Remotes not available for AttackMob!") return end
+    if not Mob or not Mob.Name then warn("Invalid mob for AttackMob!") return end
 
     local Args = {
         [1] = {
@@ -515,8 +538,8 @@ local function AttackMob(Mob)
 end
 
 Tab:CreateToggle({
-    Name = "Auto Attaque Mob 👊",
-    Description = "Attaque automatiquement le mob le plus proche à portée",
+    Name = "Auto Attack Mob 👊",
+    Description = "Automatically attack the nearest mob within range", -- Added description
     Callback = function()
         while Flags.AutoAttackMob.CurrentValue and task.wait(.01) do
             local Target
@@ -537,16 +560,16 @@ Tab:CreateToggle({
 
 Tab:CreateToggle({
     Name = "Auto Arise Mob 👻",
-    Description = "Capture automatiquement les mobs disponibles",
+    Description = "Automatically capture available mobs", -- Added description
     Callback = function()
         while Flags.AutoAriseMob.CurrentValue and task.wait() do
             local ClientFolder = Mobs and Mobs:FindFirstChild("Client")
-            if not ClientFolder then warn("Dossier Mobs/Client non trouvé pour Auto Arise Mob!") continue end
+            if not ClientFolder then warn("Mobs/Client folder not found for Auto Arise Mob!") continue end
 
             for _, Mob in ipairs(ClientFolder:GetChildren()) do
                 local Prompt = Mob:FindFirstChild("HumanoidRootPart") and Mob.HumanoidRootPart:FindFirstChild("ArisePrompt")
                 if Prompt then
-                    if not Remotes then warn("Remotes non disponibles pour Auto Arise Mob!") break end
+                    if not Remotes then warn("Remotes not available for Auto Arise Mob!") break end
                     local Args = {
                         [1] = {
                             [1] = {
@@ -564,17 +587,17 @@ Tab:CreateToggle({
 }, "AutoAriseMob")
 
 Tab:CreateToggle({
-    Name = "Auto Détruire Mob 💥",
-    Description = "Détruit automatiquement les mobs disponibles",
+    Name = "Auto Destroy Mob 💥",
+    Description = "Automatically destroy available mobs", -- Added description
     Callback = function()
         while Flags.AutoDestroyMob.CurrentValue and task.wait() do
             local ClientFolder = Mobs and Mobs:FindFirstChild("Client")
-            if not ClientFolder then warn("Dossier Mobs/Client non trouvé pour Auto Détruire Mob!") continue end
+            if not ClientFolder then warn("Mobs/Client folder not found for Auto Destroy Mob!") continue end
 
             for _, Mob in ipairs(ClientFolder:GetChildren()) do
                 local Prompt = Mob:FindFirstChild("HumanoidRootPart") and Mob.HumanoidRootPart:FindFirstChild("DestroyPrompt")
                 if Prompt then
-                    if not Remotes then warn("Remotes non disponibles pour Auto Détruire Mob!") break end
+                    if not Remotes then warn("Remotes not available for Auto Destroy Mob!") break end
                     local Args = {
                         [1] = {
                             [1] = {
@@ -591,11 +614,11 @@ Tab:CreateToggle({
     end
 }, "AutoDestroyMob")
 
-Tab:CreateSection("Boutique")
+Tab:CreateSection("Shop")
 
 Tab:CreateDropdown({
-    Name = "Sélectionner le Rang d'Ombre 💰",
-    Description = "Sélectionnez le rang d'ombres que vous voulez vendre",
+    Name = "Select Shadow Rank 💰",
+    Description = "Select the rank of shadows you want to sell",
     Options = RankValues,
     CurrentOption = {},
     MultipleOptions = true,
@@ -604,19 +627,19 @@ Tab:CreateDropdown({
 }, "SelectShadowRank")
 
 Tab:CreateToggle({
-    Name = "Auto Vendre Rang d'Ombre 💸",
-    Description = "Vend automatiquement les ombres des rangs sélectionnés",
+    Name = "Auto Sell Shadow Rank 💸",
+    Description = "Automatically sell shadows of selected ranks", -- Added description
     Callback = function()
         while Flags.AutoSellShadowRank.CurrentValue and task.wait(.1) do
-            local PetsFolder = Player.leaderstats.Inventory:FindFirstChild("Pets")
-            if not PetsFolder then Notify("Boutique ⚠️", "Inventaire des familiers non trouvé!", "_error") continue end
+            local Pets = Player.leaderstats.Inventory:FindFirstChild("Pets")
+            if not Pets then Notify("Shop ⚠️", "Pets inventory not found!", "_error") continue end
 
             local RankNumbers = {}
 
-            -- Assurez-vous que Flags.SelectShadowRank.CurrentOption est une table
+            -- Ensure Flags.SelectShadowRank.CurrentOption is a table
             local selectedRanks = Flags.SelectShadowRank and Flags.SelectShadowRank.CurrentOption
             if type(selectedRanks) ~= "table" then
-                warn("Flags.SelectShadowRank.CurrentOption n'est pas une table!")
+                warn("Flags.SelectShadowRank.CurrentOption is not a table!")
                 continue
             end
 
@@ -632,13 +655,13 @@ Tab:CreateToggle({
             end
 
             if #RankNumbers > 0 then
-                for _, Pet in ipairs(PetsFolder:GetChildren()) do
+                for _, Pet in ipairs(Pets:GetChildren()) do
                     local RankValue = Pet:GetAttribute("Rank")
                     
                     if typeof(RankValue) == "number" then
                         for _, Rank in ipairs(RankNumbers) do
                             if RankValue == Rank then
-                                if not Remotes then Notify("Boutique ⚠️", "Remotes non disponibles pour la vente de familiers!", "_error") break end
+                                if not Remotes then Notify("Shop ⚠️", "Remotes not available for selling pets!", "_error") break end
                                 local Args = {
                                     [1] = {
                                         [1] = {
@@ -660,13 +683,13 @@ Tab:CreateToggle({
     end
 }, "AutoSellShadowRank")
 
-Tab:CreateSection("Donjon")
+Tab:CreateSection("Dungeon")
 
 Tab:CreateButton({
-    Name = "Donjon de Rang Supérieur ⬆️",
-    Description = "Aller au donjon de rang supérieur",
+    Name = "Rank Up Dungeon ⬆️",
+    Description = "Go to the rank up dungeon",
     Callback = function()
-        if not Remotes then Notify("Donjon ⚠️", "Remotes non disponibles pour le Donjon de Rang Supérieur!", "_error") return end
+        if not Remotes then Notify("Dungeon ⚠️", "Remotes not available for Rank Up Dungeon!", "_error") return end
         local Args = {
             [1] = {
                 [1] = {
@@ -677,14 +700,14 @@ Tab:CreateButton({
             }
         }
         Remotes:FireServer(unpack(Args))
-        Notify("Donjon 🚀", "Tentative d'entrée dans le Donjon de Rang Supérieur!", "swords", "Lucide")
+        Notify("Dungeon 🚀", "Attempting to enter Rank Up Dungeon!", "swords", "Lucide")
     end
 })
 
 Tab:CreateDivider()
 
 local function TeleportToSpawn(SpawnName)
-    if not Remotes then warn("Remotes non disponibles pour TeleportToSpawn!") return end
+    if not Remotes then warn("Remotes not available for TeleportToSpawn!") return end
     local Args = {
         [1] = {
             [1] = {
@@ -702,7 +725,7 @@ local function TeleportToSpawn(SpawnName)
 end
 
 local function CreateAndStartDungeon(dungeonId)
-    if not Remotes then warn("Remotes non disponibles pour CreateAndStartDungeon!") return end
+    if not Remotes then warn("Remotes not available for CreateAndStartDungeon!") return end
 
     local Args = {
         [1] = {
@@ -750,8 +773,8 @@ local function CreateAndStartDungeon(dungeonId)
 end
 
 Tab:CreateDropdown({
-    Name = "Sélectionner le Donjon 🏞️",
-    Description = "Sélectionnez le donjon que vous voulez faire",
+    Name = "Select Dungeon 🏞️",
+    Description = "Select the dungeon you want to do",
     Options = IslandKeys,
     CurrentOption = {},
     MultipleOptions = true,
@@ -760,8 +783,8 @@ Tab:CreateDropdown({
 }, "SelectDungeon")
 
 Tab:CreateDropdown({
-    Name = "Sélectionner la Rune de Donjon ✨",
-    Description = "Sélectionnez la rune que vous voulez utiliser (Max 5)",
+    Name = "Select Dungeon Rune ✨",
+    Description = "Select the rune you want to use (Max 5)",
     Options = DgRunes,
     CurrentOption = {},
     MultipleOptions = true,
@@ -769,32 +792,32 @@ Tab:CreateDropdown({
     Callback = function(Value)
         if type(Value) == "table" and #Value > 5 then
             table.remove(Value, #Value)
-            Notify("Donjon 🚫", "Vous ne pouvez sélectionner que 5 Runes!", "swords", "Lucide")
+            Notify("Dungeon 🚫", "You can only select 5 Runes!", "swords", "Lucide")
             if Flags.DungeonRune then
                 Flags.DungeonRune:Set({
                     CurrentOption = Value
                 })
             else
-                warn("Flags.DungeonRune non initialisé!")
+                warn("Flags.DungeonRune not initialized!")
             end
         end
     end
 }, "DungeonRune")
 
 function Rejoin(Id)
-    Notify("Rejoindre 🔄", "Rejoindre la partie...", "sailboat", "Lucide")
+    Notify("Rejoin 🔄", "Rejoining the game...", "sailboat", "Lucide")
     TeleportService:Teleport(Id)
 end
 
 Tab:CreateToggle({
-    Name = "Auto Détecter Donjon 🔔",
-    Description = "Détecte et se téléporte automatiquement aux nouveaux donjons",
+    Name = "Auto Detect Dungeon 🔔",
+    Description = "Automatically detect and teleport to new dungeons", -- Added description
     Callback = function()
         while Flags.AutoDetectDungeon.CurrentValue and task.wait(.1) do
             local WarnGui = Player.PlayerGui:FindFirstChild("Warn")
             if not WarnGui then continue end
 
-            for _, DungeonFrame in ipairs(WarnGui:GetChildren()) do -- Renommé 'Dungeon' en 'DungeonFrame' pour éviter les conflits
+            for _, DungeonFrame in ipairs(WarnGui:GetChildren()) do -- Renamed 'Dungeon' to 'DungeonFrame' to avoid conflict with global 'Dungeon'
                 if not DungeonFrame:IsA("Frame") then continue end
 
                 for _, Child in ipairs(DungeonFrame:GetChildren()) do
@@ -805,13 +828,13 @@ Tab:CreateToggle({
                         local Text = WarnMessage.Text
                         if not string.find(Text, "SPAWNED") then continue end
 
-                        local CodeIsland = VillageSpawns[string.lower(Text)] -- Correction ici
+                        local CodeIsland = VillageSpawns[string.lower(Text)] -- Correction here
                         local SelectedList = Flags.SelectDungeon and Flags.SelectDungeon.CurrentOption or {}
-                        if #SelectedList == 0 then SelectedList = IslandKeys end -- Utilise IslandKeys si rien n'est sélectionné
+                        if #SelectedList == 0 then SelectedList = IslandKeys end -- Use IslandKeys if nothing selected
 
                         for _, Selected in ipairs(SelectedList) do
                             if CodeIsland == Selected then
-                                Notify("Donjon 🚀", "Téléportation vers " .. Text .. "!", "swords", "Lucide")
+                                Notify("Dungeon 🚀", "Teleporting to " .. Text .. "!", "swords", "Lucide")
                                 TeleportToSpawn(CodeIsland)
                                 break
                             end
@@ -824,17 +847,17 @@ Tab:CreateToggle({
 }, "AutoDetectDungeon")
 
 Tab:CreateDropdown({
-    Name = "Mode Donjon ⚙️",
-    Description = "Sélectionnez le mode de donjon (Téléportation ou Bypass)",
+    Name = "Dungeon Mode ⚙️",
+    Description = "Select the dungeon mode (Teleport or Bypass)",
     Options = { "Teleport", "Bypass" },
-    CurrentOption = "Teleport", -- Valeur par défaut
+    CurrentOption = "Teleport", -- Default value
     MultipleOptions = false,
     SpecialType = nil,
     Callback = function()end
 }, "DungeonMode")
 
 local function BuyTicket()
-    if not Remotes then warn("Remotes non disponibles pour BuyTicket!") return end
+    if not Remotes then warn("Remotes not available for BuyTicket!") return end
     local Args = {
         [1] = {
             [1] = {
@@ -846,14 +869,14 @@ local function BuyTicket()
         }
     }
     Remotes:FireServer(unpack(Args))
-    Notify("Ticket 🎟️", "Tentative d'achat d'un ticket de donjon!", "swords", "Lucide")
+    Notify("Ticket 🎟️", "Attempting to buy a dungeon ticket!", "swords", "Lucide")
 end
 
 Tab:CreateToggle({
-    Name = "Auto Acheter Ticket 💎",
-    Description = "Achète automatiquement les tickets de donjon si nécessaire",
+    Name = "Auto Buy Ticket 💎",
+    Description = "Automatically buy dungeon tickets when needed", -- Added description
     Callback = function()
-        if not IsInDungeon() then BuyTicket() end -- Vérification initiale
+        if not IsInDungeon() then BuyTicket() end -- Initial check
         while Flags.AutoBuyTicket.CurrentValue and task.wait(.1) do
             local WarnGui = Player.PlayerGui:FindFirstChild("Warn")
             if not WarnGui then continue end
@@ -878,13 +901,13 @@ Tab:CreateToggle({
 }, "AutoBuyTicket")
 
 Tab:CreateToggle({
-    Name = "Auto Donjon 🔁",
-    Description = "Automatise les runs de donjon en fonction du mode sélectionné",
+    Name = "Auto Dungeon 🔁",
+    Description = "Automate dungeon runs based on selected mode", -- Added description
     Callback = function()
         local dungeonMode = Flags.DungeonMode and Flags.DungeonMode.CurrentOption
         if dungeonMode == "Bypass" and not IsInDungeon() then
             CreateAndStartDungeon(Player.UserId)
-            Notify("Auto Donjon 🚀", "Bypass de l'entrée du donjon!", "swords", "Lucide")
+            Notify("Auto Dungeon 🚀", "Bypassing dungeon entry!", "swords", "Lucide")
         end
 
         task.spawn(function()
@@ -893,17 +916,17 @@ Tab:CreateToggle({
                 if UpContainer then
                     local InfoText = UpContainer:FindFirstChild("DungeonInfo") and UpContainer.DungeonInfo.TextLabel.Text
                     if InfoText and string.find(InfoText, "Dungeon End") then
-                        Notify("Fin du Donjon 🎉", "Donjon terminé!", "swords", "Lucide")
+                        Notify("Dungeon End 🎉", "Dungeon completed!", "swords", "Lucide")
                         if dungeonMode == "Teleport" then
                             Rejoin(87039211657390)
                         else
                             CreateAndStartDungeon(Player.UserId)
                         end
                     end
-                end
+                </div>
         
                 if dungeonMode == "Teleport" then
-                    -- Assurez-vous que Dungeon existe avant d'itérer
+                    -- Ensure Dungeon exists before iterating
                     if Dungeon then
                         for _, Obj in ipairs(Dungeon:GetChildren()) do
                             if Obj:IsA("Part") then
@@ -916,7 +939,7 @@ Tab:CreateToggle({
                             end
                         end
                     else
-                        warn("Dossier Dungeon non trouvé pour le mode Téléportation!")
+                        warn("Dungeon folder not found for Teleport mode!")
                     end
                 else
                     local WarnGui = Player.PlayerGui:FindFirstChild("Warn")
@@ -931,7 +954,7 @@ Tab:CreateToggle({
                             local WarnMessage = Child:FindFirstChild("WarnMessage")
                             if WarnMessage and WarnMessage:IsA("TextLabel") then
                                 if string.find(string.lower(WarnMessage.Text), "reset!") then
-                                    Notify("Réinitialisation du Donjon 🔄", "Réinitialisation du donjon détectée, redémarrage!", "swords", "Lucide")
+                                    Notify("Dungeon Reset 🔄", "Dungeon reset detected, restarting!", "swords", "Lucide")
                                     CreateAndStartDungeon(Player.UserId)
                                 end
                             end
@@ -961,7 +984,7 @@ Tab:CreateToggle({
                         elseif farmTeleportMethod == "Bypass (tween)" then
                             TweenToPosition(Character, TargetPos + Vector3.new(0, 0, 6))
                         else
-                            -- Par défaut, téléportation instantanée si la méthode n'est pas sélectionnée ou invalide
+                            -- Default to instant if method not selected or invalid
                             InstantTeleport(CFrame.new(TargetPos) * CFrame.new(0, 0, 6))
                         end
                         task.wait(tonumber(Flags.DelayFarm.CurrentValue or 0.5))
@@ -974,28 +997,28 @@ Tab:CreateToggle({
 }, "AutoDungeon")
 
 local Tab: Tab = Window:CreateTab({
-    Name = "Château",
+    Name = "Castle",
     Icon = "castle",
     ImageSource = "Lucide",
     ShowTitle = false
 })
 
-Tab:CreateSection("Farm")
+Tab:CreateSection("Farming")
 
 Tab:CreateToggle({
-    Name = "Utiliser Dernier Checkpoint ✅",
-    Description = "Commencer à partir du dernier checkpoint sauvegardé dans le château",
+    Name = "Use Last Checkpoint ✅",
+    Description = "Start from the last saved checkpoint in the castle", -- Added description
     Callback = function()end
 }, "UseLastCheckpoint")
 
 Tab:CreateToggle({
-    Name = "Auto Château 🏰",
-    Description = "Progresse automatiquement dans les étages du château",
+    Name = "Auto Castle 🏰",
+    Description = "Automatically progress through the castle floors", -- Added description
     Callback = function()
         local LastFloor = nil
 
         while Flags.AutoCastle.CurrentValue and task.wait(0.1) do
-            if not Remotes then Notify("Château ⚠️", "Remotes non disponibles pour Auto Château!", "_error") break end
+            if not Remotes then Notify("Castle ⚠️", "Remotes not available for Auto Castle!", "_error") break end
             local Args = {
                 [1] = {
                     [1] = {
@@ -1007,7 +1030,7 @@ Tab:CreateToggle({
                 }
             }
             Remotes:FireServer(unpack(Args))
-            Notify("Château ➡️", "Tentative de rejoindre le château!", "castle", "Lucide")
+            Notify("Castle ➡️", "Attempting to join castle!", "castle", "Lucide")
 
             local Target = GetAnyMob()
             if Target and Target:IsA("Instance") and not Target:GetAttribute("Dead") then
@@ -1030,11 +1053,11 @@ Tab:CreateToggle({
                     end
                 end
             else
-                local WorldsFolder = workspace:FindFirstChild("__Main") and workspace.__Main:FindFirstChild("__World")
+                local Worlds = workspace:FindFirstChild("__Main") and workspace.__Main:FindFirstChild("__World")
                 local UpContainer = Player.PlayerGui.Hud:FindFirstChild("UpContanier")
                 local RoomText = UpContainer and UpContainer:FindFirstChild("Room")
 
-                if WorldsFolder and RoomText and RoomText:IsA("TextLabel") then
+                if Worlds and RoomText and RoomText:IsA("TextLabel") then
                     local UpText = RoomText.Text
                     local CurrentFloor = tonumber(UpText:match("Floor: (%d+)/%d+"))
 
@@ -1046,7 +1069,7 @@ Tab:CreateToggle({
                             local TargetWorld
                             repeat
                                 task.wait(.1)
-                                TargetWorld = WorldsFolder:FindFirstChild("Room_" .. TargetFloor)
+                                TargetWorld = Worlds:FindFirstChild("Room_" .. TargetFloor)
                             until TargetWorld
 
                             local PlayersSpawns
@@ -1060,7 +1083,7 @@ Tab:CreateToggle({
                                 Character:PivotTo(PlayersSpawns:GetPivot())
                             end
 
-                            Notify("Étage ⬆️", "Téléportation vers l'étage " .. TargetFloor .. "!", "castle", "Lucide")
+                            Notify("Floor ⬆️", "Teleporting to Floor " .. TargetFloor .. "!", "castle", "Lucide")
                         end
                     end
                 end
@@ -1070,31 +1093,31 @@ Tab:CreateToggle({
 }, "AutoCastle")
 
 Tab:CreateInput({
-    Name = "Étage à Quitter 🚪",
-    Description = "Quitter automatiquement en atteignant +1 cet étage. (1-100)",
+    Name = "Floor to Leave 🚪",
+    Description = "Automatically leave when reaching +1 this floor. (1-100)",
     PlaceholderText = "25",
-    CurrentValue = "25", -- Valeur par défaut
+    CurrentValue = "25", -- Default value
     Numeric = true,
     MaxCharacters = 100,
     Enter = false,
     Callback = function(Value)
         local Number = tonumber(Value)
         if not Number or Number < 1 or Number > 100 then
-            Notify("Étage Invalide ❌", "Veuillez entrer un nombre entre 1 et 100", "_error")
+            Notify("Invalid Floor ❌", "Please enter a number between 1 and 100", "_error")
             if Flags.FloorToLeave then
                 Flags.FloorToLeave:Set({
                     CurrentValue = 25
                 })
             else
-                warn("Flags.FloorToLeave non initialisé!")
+                warn("Flags.FloorToLeave not initialized!")
             end
         end
     end
 }, "FloorToLeave")
 
 Tab:CreateToggle({
-    Name = "Auto Quitter Étage 👋",
-    Description = "Quitter automatiquement le château lorsque l'étage cible est atteint",
+    Name = "Auto Leave Floor 👋",
+    Description = "Automatically leave the castle when the target floor is reached", -- Added description
     Callback = function()
         while Flags.AutoLeaveFloor.CurrentValue and task.wait(0.1) do
             local UpContainer = Player.PlayerGui.Hud:FindFirstChild("UpContanier")
@@ -1107,7 +1130,7 @@ Tab:CreateToggle({
 
             local floorToLeave = Flags.FloorToLeave and Flags.FloorToLeave.CurrentValue
             if CurrentFloor and floorToLeave and CurrentFloor > tonumber(floorToLeave) then
-                Notify("Quitter le Château 🏃", "Étage cible atteint, départ!", "castle", "Lucide")
+                Notify("Leaving Castle 🏃", "Reached target floor, leaving!", "castle", "Lucide")
                 Rejoin(87039211657390)
             end
         end
@@ -1115,7 +1138,7 @@ Tab:CreateToggle({
 }, "AutoLeaveFloor")
 
 local Tab: Tab = Window:CreateTab({
-    Name = "Téléportation",
+    Name = "Teleport",
     Icon = "sailboat",
     ImageSource = "Lucide",
     ShowTitle = false
@@ -1124,15 +1147,15 @@ local Tab: Tab = Window:CreateTab({
 Tab:CreateSection("Spawn")
 
 Tab:CreateToggle({
-    Name = "Sauvegarder Spawn 📍",
-    Description = "Sauvegarder votre position de spawn actuelle",
+    Name = "Save Spawn 📍",
+    Description = "Save your current spawn location", -- Added description
     Callback = function()end
 }, "SaveSpawn")
 
 local function TeleportToIsland(IslandName)
     if IslandName and Islands[IslandName] then
         if Flags.SaveSpawn and Flags.SaveSpawn.CurrentValue then
-            if not Remotes then warn("Remotes non disponibles pour TeleportToIsland (SaveSpawn)! ") return end
+            if not Remotes then warn("Remotes not available for TeleportToIsland (SaveSpawn)! ") return end
             local Args = {
                 [1] = {
                     [1] = {
@@ -1149,54 +1172,73 @@ local function TeleportToIsland(IslandName)
         if Character then
             Character:PivotTo(Islands[IslandName])
         else
-            Notify("Téléportation ⚠️", "Personnage non trouvé pour la téléportation!", "_error")
+            Notify("Teleport ⚠️", "Character not found for teleport!", "_error")
         end
     else
-        Notify("Téléportation 🚫", "Île '" .. tostring(IslandName) .. "' non trouvée ou invalide!", "_error")
+        Notify("Teleport 🚫", "Island '" .. tostring(IslandName) .. "' not found or invalid!", "_error")
     end
 end
 
 Tab:CreateDropdown({
-    Name = "Sélectionner Spawn 🏝️",
-    Description = "Sélectionnez le spawn vers lequel vous voulez vous téléporter",
-    Options = IslandKeys,
+    Name = "Select Spawn 🏝️",
+    Description = "Select the spawn you want to teleport to",
+    Options = IslandKeys, -- Maintenant, IslandKeys ne contiendra que les mondes spécifiques
     CurrentOption = {},
     MultipleOptions = false,
     SpecialType = nil,
     Callback = function(Value)
         if Value and typeof(Value) == "string" and Value ~= "" then
-            Notify("Téléportation ✈️", "Téléportation vers " .. Value .. "!", "sailboat", "Lucide")
+            Notify("Teleport ✈️", "Teleporting to " .. Value .. "!", "sailboat", "Lucide")
             TeleportToIsland(Value)
         else
-            Notify("Téléportation 🚫", "Nom d'île ou type invalide", "_error")
+            Notify("Teleport 🚫", "Invalid Island Name or Type", "_error")
         end
     end
 }, "SelectSpawn")
 
+-- Nouvelle section pour les téléportations de mondes spécifiques
+Tab:CreateSection("Téléportations de Mondes Spécifiques")
+
+-- Liste des mondes spécifiques à ajouter en tant que boutons
+-- Cette liste est maintenant utilisée pour remplir IslandKeys et créer les boutons.
+-- local specificWorldButtons = {"HxHWorld", "DanWorld", "OPMWorld", "DBWorld", "Solo2World"} -- Déjà définie plus haut
+
+for _, worldName in ipairs(specificWorldButtons) do
+    Tab:CreateButton({
+        Name = worldName .. " 🗺️",
+        Description = "Téléporter vers " .. worldName,
+        Callback = function()
+            Notify("Téléportation ✈️", "Téléportation vers " .. worldName .. "!", "sailboat", "Lucide")
+            task.wait(.1)
+            TeleportToIsland(worldName) -- Utilise la fonction existante pour la téléportation
+        end,
+    })
+end
+
 Tab:CreateButton({
-    Name = "Île Dedu 🗺️",
-    Description = "Téléportation vers l'Île Dedu",
+    Name = "Dedu Island 🗺️",
+    Description = "Teleport to Dedu Island",
     Callback = function()
-        Notify("Téléportation ✈️", "Téléportation vers l'Île Dedu!", "sailboat", "Lucide")
+        Notify("Teleport ✈️", "Teleporting to Dedu Island!", "sailboat", "Lucide")
         task.wait(.1)
         if Character then
             Character:PivotTo(CFrame.new(3856.48486, 60.1204987, 3077.04736, 0.3869977, -1.41971441e-07, 0.922080696, -2.65326292e-07, 1, 2.65326122e-07, -0.922080696, -3.47332843e-07, 0.3869977))
         else
-            Notify("Téléportation ⚠️", "Personnage non trouvé pour la téléportation vers l'Île Dedu!", "_error")
+            Notify("Teleport ⚠️", "Character not found for Dedu Island teleport!", "_error")
         end
     end,
 })
 
 Tab:CreateButton({
-    Name = "Île Hiver ❄️",
-    Description = "Téléportation vers le Raid Hivernal",
+    Name = "Winter Island ❄️",
+    Description = "Teleport to Winter Raid",
     Callback = function()
-        Notify("Téléportation ✈️", "Téléportation vers l'Île Hiver!", "sailboat", "Lucide")
+        Notify("Teleport ✈️", "Teleporting to Winter Island!", "sailboat", "Lucide")
         task.wait(.1)
         if Character then
             Character:PivotTo(CFrame.new(4782.6416, 29.7264385, -2043.24084, -0.953545272, -1.8529015e-09, 0.301249772, -2.27541319e-11, 1, 6.07869133e-09, -0.301249772, 5.78945292e-09, -0.953545272))
         else
-            Notify("Téléportation ⚠️", "Personnage non trouvé pour la téléportation vers l'Île Hiver!", "_error")
+            Notify("Teleport ⚠️", "Character not found for Winter Island teleport!", "_error")
         end
     end
 })
@@ -1212,11 +1254,11 @@ Tab:CreateSection("QoL")
 
 -- Nouvelle option pour la méthode de téléportation de farm
 Tab:CreateDropdown({
-    Name = "Méthode de Téléportation de Farm ⚡",
-    Description = "Sélectionnez la méthode de téléportation pour le farm",
+    Name = "Farm Teleport Method ⚡",
+    Description = "Select the teleportation method for farming",
     Options = {"Instant", "Bypass (tween)"},
-    CurrentOption = "Instant", -- Valeur par défaut
+    CurrentOption = "Instant", -- Default value
     MultipleOptions = false,
     SpecialType = nil,
     Callback = function()end
-}, "FarmTeleportMethod")
+}, "FarmTeleportMethod") -- Added flagName
